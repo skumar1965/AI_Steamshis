@@ -1,5 +1,5 @@
 {
-  "name": "powerapps-kpi-dashboard",
+  "name": "d365-fo-query-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",

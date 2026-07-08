@@ -1,6 +1,15 @@
-# PowerApps KPI Dashboard
+# D365 F&O Query Agent
 
-A static, dependency-free dashboard shell for reviewing dummy PowerApps KPI data shaped like it came from Azure SQL. The dummy adapter is intentionally local so you can wire Power Platform, Dataverse, Azure Functions, or Azure SQL connections later.
+A static, dependency-free agent prototype for querying dummy Microsoft Dynamics 365 Finance & Operations data. The app lets users ask natural-language questions, maps them to seeded F&O-style entities, and displays the generated OData-style query plus tabular results.
+
+## Included dummy entities
+
+- Customers
+- Sales orders
+- Inventory on-hand
+- Vendors
+
+The adapter is intentionally local and credential-free so you can validate the experience before wiring in Microsoft Entra ID, D365 F&O OData endpoints, Dataverse virtual tables, Azure Functions, or API Management.
 
 ## Run locally
 
@@ -22,7 +31,7 @@ If you are using a remote workspace, open the forwarded/proxied URL for port `51
 npm run build
 ```
 
-The build script verifies that the static app entry, JavaScript module, stylesheet, dummy KPI adapter, and Azure SQL guidance are present.
+The build script verifies that the static app entry, JavaScript module, stylesheet, dummy D365 F&O adapter, and production connection guidance are present.
 
 ## Deploy to Vercel
 
