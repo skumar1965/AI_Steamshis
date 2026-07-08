@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 5173 --bind 0.0.0.0",
-    "build": "node scripts/validate-app.mjs"
+    "build": "node scripts/validate-app.mjs",
+    "preview": "python3 -m http.server 4173 --bind 0.0.0.0 --directory dist"
   },
   "dependencies": {},
   "devDependencies": {}

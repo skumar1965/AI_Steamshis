@@ -23,3 +23,20 @@ npm run build
 ```
 
 The build script verifies that the static app entry, JavaScript module, stylesheet, dummy KPI adapter, and Azure SQL guidance are present.
+
+## Deploy to Vercel
+
+This project is configured for Vercel as a static site. Vercel runs `npm run build`, which validates the app and copies the deployable files into `dist/`.
+
+Recommended Vercel settings:
+
+- **Framework Preset:** Other
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+- **Install Command:** `npm install` (or leave as the Vercel default)
+
+You can preview the built output locally after running the build:
+
+```bash
+npm run preview
+```
