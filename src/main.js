@@ -1,93 +1,167 @@
-const dummyKpis = [
-  { id: 'APP-1001', appName: 'Field Service Intake', owner: 'Operations', environment: 'Production', dataSource: 'Azure SQL - ServiceOps', totalSessions: 18420, activeUsers: 1284, avgLoadSeconds: 2.3, successRate: 98.7, errorCount: 42, approvalsPending: 18, lastSync: '2026-07-08 08:45 UTC', health: 'Healthy' },
-  { id: 'APP-1002', appName: 'Capital Request Portal', owner: 'Finance', environment: 'Production', dataSource: 'Azure SQL - FinanceDW', totalSessions: 9320, activeUsers: 642, avgLoadSeconds: 3.1, successRate: 96.4, errorCount: 87, approvalsPending: 64, lastSync: '2026-07-08 08:40 UTC', health: 'Watch' },
-  { id: 'APP-1003', appName: 'Safety Observation Tracker', owner: 'EHS', environment: 'UAT', dataSource: 'Azure SQL - SafetyLake', totalSessions: 5102, activeUsers: 318, avgLoadSeconds: 1.9, successRate: 99.1, errorCount: 15, approvalsPending: 7, lastSync: '2026-07-08 08:30 UTC', health: 'Healthy' },
-  { id: 'APP-1004', appName: 'Plant Maintenance Requests', owner: 'Maintenance', environment: 'Development', dataSource: 'Azure SQL - MaintOps', totalSessions: 2740, activeUsers: 121, avgLoadSeconds: 4.8, successRate: 91.8, errorCount: 129, approvalsPending: 35, lastSync: '2026-07-08 07:55 UTC', health: 'Attention' },
+const d365Tables = {
+  customers: [
+    { account: 'US-001', name: 'Contoso Manufacturing', group: 'Major', balance: 128430.22, creditLimit: 250000, status: 'Active', city: 'Seattle', lastInvoice: '2026-07-03' },
+    { account: 'US-014', name: 'Northwind Traders', group: 'Wholesale', balance: 84210.5, creditLimit: 100000, status: 'Credit hold', city: 'Chicago', lastInvoice: '2026-07-01' },
+    { account: 'US-033', name: 'Fabrikam Aerospace', group: 'Strategic', balance: 31890, creditLimit: 500000, status: 'Active', city: 'Dallas', lastInvoice: '2026-06-28' },
+    { account: 'US-047', name: 'Adventure Works Cycles', group: 'Retail', balance: 5244.75, creditLimit: 50000, status: 'Active', city: 'Denver', lastInvoice: '2026-07-06' },
+  ],
+  salesOrders: [
+    { order: 'SO-102884', customer: 'Contoso Manufacturing', legalEntity: 'USMF', status: 'Open order', amount: 45820.15, warehouse: '24', requestedShipDate: '2026-07-10' },
+    { order: 'SO-102901', customer: 'Northwind Traders', legalEntity: 'USMF', status: 'Backorder', amount: 12870.0, warehouse: '11', requestedShipDate: '2026-07-12' },
+    { order: 'SO-102917', customer: 'Fabrikam Aerospace', legalEntity: 'USMF', status: 'Delivered', amount: 98112.45, warehouse: '31', requestedShipDate: '2026-07-08' },
+    { order: 'SO-102930', customer: 'Adventure Works Cycles', legalEntity: 'USMF', status: 'Invoiced', amount: 3540.0, warehouse: '12', requestedShipDate: '2026-07-05' },
+  ],
+  inventory: [
+    { item: 'A0001', productName: 'Hydraulic pump assembly', site: '1', warehouse: '24', onHand: 418, reserved: 72, available: 346, unitCost: 228.45 },
+    { item: 'B0144', productName: 'Aluminum frame kit', site: '1', warehouse: '11', onHand: 96, reserved: 91, available: 5, unitCost: 84.1 },
+    { item: 'C0902', productName: 'IoT gateway controller', site: '2', warehouse: '31', onHand: 51, reserved: 20, available: 31, unitCost: 412.8 },
+    { item: 'D2100', productName: 'Safety valve replacement', site: '1', warehouse: '12', onHand: 0, reserved: 14, available: -14, unitCost: 37.25 },
+  ],
+  vendors: [
+    { account: 'VEN-1007', name: 'Blue Yonder Components', group: 'Parts', openInvoices: 8, balance: 48125.92, paymentTerms: 'Net 30', status: 'Approved' },
+    { account: 'VEN-1021', name: 'Litware Logistics', group: 'Freight', openInvoices: 3, balance: 17340, paymentTerms: 'Net 15', status: 'Approved' },
+    { account: 'VEN-1075', name: 'Proseware Industrial', group: 'Maintenance', openInvoices: 12, balance: 64210.33, paymentTerms: 'Net 45', status: 'Review' },
+  ],
+};
+
+const samplePrompts = [
+  'Show customers on credit hold',
+  'Find backorder sales orders',
+  'Which inventory items have low availability?',
+  'Summarize vendor balances',
 ];
 
-const syncEvents = [
-  { time: '08:45', app: 'Field Service Intake', status: 'Completed', rows: '12,482', detail: 'SQL view dbo.vw_KPI_FieldService refreshed' },
-  { time: '08:40', app: 'Capital Request Portal', status: 'Completed with warnings', rows: '7,904', detail: '3 slow-running approvals queries detected' },
-  { time: '08:30', app: 'Safety Observation Tracker', status: 'Completed', rows: '4,118', detail: 'Dataverse audit rows matched SQL staging' },
-  { time: '07:55', app: 'Plant Maintenance Requests', status: 'Needs review', rows: '2,003', detail: 'Error threshold exceeded for connector calls' },
+const queryPatterns = [
+  { match: ['credit hold', 'hold customer'], table: 'customers', summary: 'Customers currently on credit hold', filter: (row) => row.status.toLowerCase().includes('hold') },
+  { match: ['customer', 'customers', 'custtable'], table: 'customers', summary: 'Customer account snapshot', filter: () => true },
+  { match: ['backorder', 'back order'], table: 'salesOrders', summary: 'Sales orders waiting on fulfillment', filter: (row) => row.status.toLowerCase() === 'backorder' },
+  { match: ['sales order', 'salesorders', 'sales', 'open order'], table: 'salesOrders', summary: 'Sales order workspace query', filter: () => true },
+  { match: ['low availability', 'shortage', 'negative', 'stockout'], table: 'inventory', summary: 'Inventory availability exceptions', filter: (row) => row.available <= 10 },
+  { match: ['inventory', 'on hand', 'inventsum', 'items'], table: 'inventory', summary: 'On-hand inventory by warehouse', filter: () => true },
+  { match: ['vendor', 'vendors', 'vendtable', 'invoice'], table: 'vendors', summary: 'Vendor balance and invoice review', filter: () => true },
 ];
 
-const integrationSteps = [
-  'Replace dummyKpis with an API call to your secured backend or Azure Function.',
-  'Use the Power Platform admin connector or Dataverse Web API to identify app metadata.',
-  'Query Azure SQL KPI views or stored procedures from the backend, never directly from the browser.',
-  'Map returned fields to the KPI cards and table columns in this dashboard.',
-];
+const state = {
+  entity: 'All entities',
+  query: 'Show customers on credit hold',
+  lastResult: runAgentQuery('Show customers on credit hold', 'All entities'),
+};
 
-const state = { environment: 'All', query: '' };
 const root = document.getElementById('root');
+const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const numberFormatter = new Intl.NumberFormat('en-US');
 
 function icon(name) {
-  const icons = { activity: '☑', users: '👥', shield: '🛡', clock: '⏱', plug: '⚡', db: '▣', server: '☁', filter: '◈', search: '⌕', refresh: '↻', up: '↗', alert: '⚠', check: '✓' };
+  const icons = { bot: '🤖', db: '▣', search: '⌕', shield: '🛡', bolt: '⚡', table: '▦', check: '✓', alert: '⚠', flow: '↝', lock: '🔐' };
   return `<span class="icon" aria-hidden="true">${icons[name] ?? '•'}</span>`;
 }
 
-function getFilteredKpis() {
-  return dummyKpis.filter((kpi) => {
-    const matchesEnvironment = state.environment === 'All' || kpi.environment === state.environment;
-    const matchesQuery = [kpi.appName, kpi.owner, kpi.dataSource].join(' ').toLowerCase().includes(state.query.toLowerCase());
-    return matchesEnvironment && matchesQuery;
-  });
+function entityLabel(key) {
+  return ({ customers: 'Customers', salesOrders: 'Sales orders', inventory: 'Inventory', vendors: 'Vendors' })[key] ?? key;
 }
 
-function getTotals(kpis) {
-  const sessions = kpis.reduce((sum, item) => sum + item.totalSessions, 0);
-  const users = kpis.reduce((sum, item) => sum + item.activeUsers, 0);
-  const pending = kpis.reduce((sum, item) => sum + item.approvalsPending, 0);
-  const avgSuccess = kpis.length ? kpis.reduce((sum, item) => sum + item.successRate, 0) / kpis.length : 0;
-  return { sessions, users, pending, avgSuccess };
+function formatValue(key, value) {
+  if (typeof value === 'number' && ['balance', 'creditLimit', 'amount', 'unitCost'].includes(key)) return currencyFormatter.format(value);
+  if (typeof value === 'number') return numberFormatter.format(value);
+  return value;
 }
 
-function metricCard(symbol, label, value, trend) {
-  return `<article class="metric-card"><div class="metric-icon">${icon(symbol)}</div><span>${label}</span><strong>${value}</strong><p class="trend-positive">${icon('up')}${trend} vs prior period</p></article>`;
+function pickPattern(query, entity) {
+  const normalized = query.toLowerCase();
+  if (entity !== 'All entities') return { table: entity, summary: `${entityLabel(entity)} filtered by your question`, filter: (row) => JSON.stringify(row).toLowerCase().includes(normalized) || normalized.length < 3 };
+  return queryPatterns.find((pattern) => pattern.match.some((term) => normalized.includes(term))) ?? queryPatterns[1];
 }
 
-function healthBadge(status) {
-  const symbol = status === 'Healthy' ? icon('check') : icon('alert');
-  return `<span class="health-badge ${status.toLowerCase()}">${symbol}${status}</span>`;
+function runAgentQuery(query, entity) {
+  const pattern = pickPattern(query, entity);
+  const rows = d365Tables[pattern.table].filter(pattern.filter);
+  const fallbackRows = rows.length ? rows : d365Tables[pattern.table];
+  const fields = Object.keys(fallbackRows[0] ?? {});
+  return {
+    table: pattern.table,
+    summary: pattern.summary,
+    rows: fallbackRows,
+    noExactMatch: rows.length === 0,
+    odata: `/data/${entityLabel(pattern.table).replaceAll(' ', '')}?$top=25&cross-company=true`,
+    fields,
+    insight: buildInsight(pattern.table, fallbackRows),
+  };
+}
+
+function buildInsight(table, rows) {
+  if (table === 'customers') {
+    const totalBalance = rows.reduce((sum, row) => sum + row.balance, 0);
+    return `${rows.length} customer records returned with ${currencyFormatter.format(totalBalance)} total open balance.`;
+  }
+  if (table === 'salesOrders') {
+    const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
+    return `${rows.length} sales orders returned with ${currencyFormatter.format(totalAmount)} in order value.`;
+  }
+  if (table === 'inventory') {
+    const exceptions = rows.filter((row) => row.available <= 10).length;
+    return `${exceptions} of ${rows.length} item/warehouse records are at or below the low-availability threshold.`;
+  }
+  const totalBalance = rows.reduce((sum, row) => sum + row.balance, 0);
+  return `${rows.length} vendors returned with ${currencyFormatter.format(totalBalance)} open balance.`;
+}
+
+function getEntityTotals() {
+  return [
+    { label: 'Dummy entities', value: Object.keys(d365Tables).length, detail: 'Customers, orders, inventory, vendors' },
+    { label: 'Queryable records', value: Object.values(d365Tables).reduce((sum, rows) => sum + rows.length, 0), detail: 'Seeded F&O rows' },
+    { label: 'Agent mode', value: 'Local', detail: 'No credentials required' },
+  ];
+}
+
+function renderResultTable(result) {
+  return `<div class="table-wrap"><table><thead><tr>${result.fields.map((field) => `<th>${field}</th>`).join('')}</tr></thead><tbody>${result.rows.map((row) => `<tr>${result.fields.map((field) => `<td>${formatValue(field, row[field])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
 function render() {
-  const kpis = getFilteredKpis();
-  const totals = getTotals(kpis);
-
+  const result = state.lastResult;
   root.innerHTML = `
     <main class="app-shell">
       <section class="hero">
         <div>
-          <p class="eyebrow">${icon('plug')} Power Platform + Azure SQL</p>
-          <h1>PowerApps KPI Command Center</h1>
-          <p class="hero-copy">A connection-ready dashboard that uses dummy KPI data today and can be wired to PowerApps, Dataverse, Azure SQL views, or your backend services later.</p>
-          <div class="hero-actions"><button class="primary" id="refreshButton">${icon('refresh')} Simulate refresh</button><button class="secondary">${icon('db')} Configure SQL connection</button></div>
+          <p class="eyebrow">${icon('bot')} Dynamics 365 Finance & Operations Agent</p>
+          <h1>Ask questions across D365 F&amp;O dummy data.</h1>
+          <p class="hero-copy">A local agent prototype translates natural-language prompts into seeded Finance &amp; Operations entity queries so teams can demo the experience before connecting Microsoft Entra ID, OData, Dataverse virtual tables, or a secure backend.</p>
+          <div class="hero-actions">${samplePrompts.map((prompt) => `<button class="secondary sample-prompt" data-prompt="${prompt}">${prompt}</button>`).join('')}</div>
         </div>
-        <div class="connection-card">${icon('server')}<span>Connection mode</span><strong>Dummy data adapter</strong><p>Swap the adapter with your Azure SQL / Power Platform API integration when credentials are ready.</p></div>
+        <div class="connection-card">${icon('lock')}<span>Connection mode</span><strong>Dummy D365 F&amp;O adapter</strong><p>Uses in-browser seed data only. Replace the adapter with authenticated D365 F&amp;O OData calls when credentials and environments are ready.</p></div>
       </section>
-      <section class="summary-grid" aria-label="KPI summary">
-        ${metricCard('activity', 'Total sessions', numberFormatter.format(totals.sessions), '+12.4%')}
-        ${metricCard('users', 'Active users', numberFormatter.format(totals.users), '+8.1%')}
-        ${metricCard('shield', 'Avg success rate', `${totals.avgSuccess.toFixed(1)}%`, '+1.7%')}
-        ${metricCard('clock', 'Pending approvals', numberFormatter.format(totals.pending), '-5.2%')}
+
+      <section class="summary-grid" aria-label="Agent setup summary">
+        ${getEntityTotals().map((metric) => `<article class="metric-card"><div class="metric-icon">${icon('db')}</div><span>${metric.label}</span><strong>${metric.value}</strong><p>${metric.detail}</p></article>`).join('')}
+        <article class="metric-card"><div class="metric-icon">${icon('shield')}</div><span>Security stance</span><strong>Backend first</strong><p>Keep secrets out of the browser</p></article>
       </section>
-      <section class="panel controls-panel">
-        <div class="control-group"><label for="environment">${icon('filter')} Environment</label><select id="environment">${['All', 'Production', 'UAT', 'Development'].map((option) => `<option ${state.environment === option ? 'selected' : ''}>${option}</option>`).join('')}</select></div>
-        <div class="control-group search-box"><label for="search">${icon('search')} Search apps, owners, or sources</label><input id="search" value="${state.query}" placeholder="Try Finance or Azure SQL" /></div>
+
+      <section class="panel agent-panel">
+        <div class="panel-heading"><div><p class="eyebrow">${icon('search')} Agent query console</p><h2>Query Finance &amp; Operations entities</h2></div><span class="record-count">${entityLabel(result.table)}</span></div>
+        <div class="query-grid">
+          <div class="control-group"><label for="entity">Entity scope</label><select id="entity">${['All entities', 'customers', 'salesOrders', 'inventory', 'vendors'].map((option) => `<option value="${option}" ${state.entity === option ? 'selected' : ''}>${option === 'All entities' ? option : entityLabel(option)}</option>`).join('')}</select></div>
+          <div class="control-group"><label for="query">Natural-language question</label><input id="query" value="${state.query}" placeholder="Ask about customers, sales orders, inventory, or vendors" /></div>
+          <button class="primary" id="askButton">${icon('bolt')} Ask agent</button>
+        </div>
+        <div class="agent-answer">
+          <div><p class="eyebrow">${icon('flow')} Generated query</p><code>${result.odata}</code></div>
+          <div><p class="eyebrow">${icon(result.noExactMatch ? 'alert' : 'check')} Agent answer</p><h3>${result.summary}</h3><p>${result.noExactMatch ? 'No exact text match was found, so the agent returned the closest entity set. ' : ''}${result.insight}</p></div>
+        </div>
+        ${renderResultTable(result)}
       </section>
-      <section class="dashboard-grid">
-        <div class="panel table-panel"><div class="panel-heading"><div><p class="eyebrow">Application telemetry</p><h2>PowerApps KPI data</h2></div><span class="record-count">${kpis.length} apps</span></div><div class="table-wrap"><table><thead><tr><th>App</th><th>Owner</th><th>Environment</th><th>Success</th><th>Load</th><th>Errors</th><th>Health</th></tr></thead><tbody>${kpis.map((kpi) => `<tr><td><strong>${kpi.appName}</strong><span>${kpi.dataSource}</span></td><td>${kpi.owner}</td><td>${kpi.environment}</td><td>${kpi.successRate}%</td><td>${kpi.avgLoadSeconds}s</td><td>${kpi.errorCount}</td><td>${healthBadge(kpi.health)}</td></tr>`).join('')}</tbody></table></div></div>
-        <aside class="panel side-panel"><p class="eyebrow">SQL sync monitor</p><h2>Latest refresh events</h2><div class="timeline">${syncEvents.map((event) => `<article><span class="timeline-dot"></span><div><strong>${event.time} · ${event.app}</strong><p>${event.status} · ${event.rows} rows</p><small>${event.detail}</small></div></article>`).join('')}</div></aside>
-      </section>
-      <section class="panel architecture-panel"><div><p class="eyebrow">Connection-ready architecture</p><h2>How to wire in real data later</h2></div><div class="steps-grid">${integrationSteps.map((step, index) => `<article class="step-card"><span>${index + 1}</span><p>${step}</p></article>`).join('')}</div></section>
+
+      <section class="panel architecture-panel"><div><p class="eyebrow">Production path</p><h2>How to replace dummy data</h2></div><div class="steps-grid">${[
+        'Move D365 F&O calls behind Azure Functions, API Management, or another trusted service.',
+        'Authenticate with Microsoft Entra ID and enforce F&O roles, legal entities, and row-level policies.',
+        'Map natural-language intents to approved OData entities, data entities, or custom service operations.',
+        'Add audit logging, prompt guardrails, paging, and throttling before exposing production data.',
+      ].map((step, index) => `<article class="step-card"><span>${index + 1}</span><p>${step}</p></article>`).join('')}</div></section>
     </main>`;
 
-  document.getElementById('environment').addEventListener('change', (event) => { state.environment = event.target.value; render(); });
-  document.getElementById('search').addEventListener('input', (event) => { state.query = event.target.value; render(); });
-  document.getElementById('refreshButton').addEventListener('click', () => { alert('Dummy KPI refresh complete. Replace this action with your backend refresh endpoint.'); });
+  document.getElementById('entity').addEventListener('change', (event) => { state.entity = event.target.value; state.lastResult = runAgentQuery(state.query, state.entity); render(); });
+  document.getElementById('query').addEventListener('input', (event) => { state.query = event.target.value; });
+  document.getElementById('askButton').addEventListener('click', () => { state.lastResult = runAgentQuery(state.query, state.entity); render(); });
+  document.querySelectorAll('.sample-prompt').forEach((button) => button.addEventListener('click', () => { state.query = button.dataset.prompt; state.lastResult = runAgentQuery(state.query, state.entity); render(); }));
 }
 
 render();
