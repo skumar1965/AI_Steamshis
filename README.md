@@ -1,15 +1,30 @@
-# D365 F&O Query Agent
+# StatementFlow — Dynamics 365 Customer Statement Agent
 
-A static, dependency-free agent prototype for querying dummy Microsoft Dynamics 365 Finance & Operations data. The app lets users ask natural-language questions, maps them to seeded F&O-style entities, and displays the generated OData-style query plus tabular results.
+A responsive, dependency-free prototype for a Microsoft Dynamics 365 Finance customer-statement workflow. Finance users can select eligible customers, configure a statement date and transaction scope, preview the agent's plan, start a send run, and monitor delivery activity.
 
-## Included dummy entities
+## Prototype capabilities
 
-- Customers
-- Sales orders
-- Inventory on-hand
-- Vendors
+- Customer selection with balances, recipient readiness, and missing-email safeguards
+- Statement date, transaction scope, email template, and recurring schedule controls
+- Live run totals and an agent-generated execution summary
+- Interactive send action with immediate activity and status feedback
+- Responsive desktop and mobile layouts
 
-The adapter is intentionally local and credential-free so you can validate the experience before wiring in Microsoft Entra ID, D365 F&O OData endpoints, Dataverse virtual tables, Azure Functions, or API Management.
+All data and delivery actions are local demo data; the prototype does not send email or connect to a tenant.
+
+## Production architecture
+
+Use the UI as the operator surface, but execute statement runs in a trusted backend:
+
+1. Register a Microsoft Entra application and grant only the Dynamics 365 Finance permissions the integration requires. Keep credentials in Azure Key Vault and never in browser code.
+2. Expose a narrow orchestration API through Azure Functions or another secured service. Validate the caller, legal entity, customer scope, dates, and approved template identifiers.
+3. Read customer accounts, contacts, and transactions from supported Finance data entities or custom services. Prefer the built-in customer statement report/process when it satisfies the business requirement rather than recreating accounting logic.
+4. Run statement generation asynchronously. Store one immutable run record and one item per customer so retries are idempotent and a partial failure does not resend successful statements.
+5. Render the customer statement as a PDF through the Finance reporting pipeline, then deliver it using an approved email provider or Finance print-management destination.
+6. Persist delivery status, correlation IDs, errors, and the initiating user. Apply Finance roles and legal-entity access on the server; an AI model must never choose or expand authorization scope.
+7. If natural language is added, constrain the model to a small tool contract such as `create_statement_run(customer_ids, statement_date, transaction_scope, template_id)`. Require a human confirmation before dispatch and validate every tool argument server-side.
+
+Recommended run states are `Draft → Validated → Generating → Ready → Sending → Completed`, with per-recipient `Delivered`, `Failed`, or `Skipped` outcomes. Add a dead-letter queue, rate limits, retention rules, duplicate-send protection, and alerts before production use.
 
 ## Run locally
 
@@ -17,35 +32,12 @@ The adapter is intentionally local and credential-free so you can validate the e
 npm run dev
 ```
 
-The app binds to all interfaces on port `5173`:
+Open `http://127.0.0.1:5173/`.
 
-```text
-http://127.0.0.1:5173/
-```
-
-If you are using a remote workspace, open the forwarded/proxied URL for port `5173` instead of your own machine's `localhost`.
-
-## Validate
+## Validate and build
 
 ```bash
 npm run build
 ```
 
-The build script verifies that the static app entry, JavaScript module, stylesheet, dummy D365 F&O adapter, and production connection guidance are present.
-
-## Deploy to Vercel
-
-This project is configured for Vercel as a static site. Vercel runs `npm run build`, which validates the app and copies the deployable files into `dist/`.
-
-Recommended Vercel settings:
-
-- **Framework Preset:** Other
-- **Build Command:** `npm run build`
-- **Output Directory:** `dist`
-- **Install Command:** `npm install` (or leave as the Vercel default)
-
-You can preview the built output locally after running the build:
-
-```bash
-npm run preview
-```
+The build validates required workflow elements and copies the static app to `dist/`.
